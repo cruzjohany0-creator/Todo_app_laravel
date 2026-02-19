@@ -1,37 +1,53 @@
+# Imagen base PHP
 FROM php:8.2-cli
 
+# Instalar dependencias del sistema
 RUN apt-get update && apt-get install -y \
-    git unzip curl zip \
-    libzip-dev libpng-dev libxml2-dev libonig-dev \
-    gnupg ca-certificates
+    git \
+    unzip \
+    curl \
+    zip \
+    libzip-dev \
+    libpng-dev \
+    libxml2-dev \
+    libonig-dev \
+    nodejs \
+    npm
 
-# instalar node 18
-RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
-    && apt-get install -y nodejs
-
+# Instalar extensiones PHP necesarias para Laravel
 RUN docker-php-ext-install pdo_mysql mbstring zip exif pcntl bcmath
 
-COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
+# Instalar Composer
+COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
+# Carpeta de la app
 WORKDIR /var/www/app
 
-COPY composer.json composer.lock ./
-
-RUN composer install --no-dev --optimize-autoloader --no-interaction
-
+# Copiar archivos
 COPY . .
 
-# SOLUCION ERROR ERESOLVE
-RUN npm install --legacy-peer-deps
+# Crear archivo .env si no existe
+RUN cp .env.example .env
 
-RUN npm run build
-
-RUN cp .env.example .env || true
-
+# Generar APP_KEY antes de composer install
 RUN php artisan key:generate --force || true
 
-RUN chmod -R 777 storage bootstrap/cache
+# Instalar dependencias PHP
+RUN composer install --no-dev --optimize-autoloader --no-interaction
 
+# Instalar dependencias Node
+RUN npm install --legacy-peer-deps
+
+# Compilar frontend
+RUN npm run build
+
+# Limpiar cache
+RUN php artisan config:clear
+RUN php artisan route:clear
+RUN php artisan view:clear
+
+# Puerto de Render
 EXPOSE 10000
 
-CMD ["php", "artisan", "serve", "--host=0.0.0.0", "--port=10000"]
+# Comando inicio
+CMD php artisan serve --host=0.0.0.0 --port=10000
