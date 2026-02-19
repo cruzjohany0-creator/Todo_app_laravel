@@ -1,95 +1,48 @@
-# Imagen base de PHP con Apache
-FROM php:8.2-apache
+# Usar imagen oficial PHP
+FROM php:8.2-cli
 
 # Instalar dependencias del sistema
 RUN apt-get update && apt-get install -y \
     git \
-    curl \
-    libpng-dev \
-    libonig-dev \
-    libxml2-dev \
-    libzip-dev \
-    zip \
     unzip \
+    curl \
+    zip \
+    libzip-dev \
+    libpng-dev \
+    libxml2-dev \
+    libonig-dev \
     nodejs \
-    npm \
-    ca-certificates \
-    openssl
+    npm
 
-# Limpiar caché de apt
-RUN apt-get clean && rm -rf /var/lib/apt/lists/*
-
-# Actualizar certificados SSL (crítico para Aiven)
-RUN update-ca-certificates
-
-# Instalar extensiones de PHP
-RUN docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd zip
-
-# Habilitar mod_rewrite de Apache
-RUN a2enmod rewrite
+# Instalar extensiones necesarias de PHP
+RUN docker-php-ext-install pdo_mysql mbstring zip exif pcntl bcmath
 
 # Instalar Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
-# Establecer directorio de trabajo
-WORKDIR /var/www/html
+# Crear carpeta de la aplicación
+WORKDIR /var/www/app
 
-# Copiar archivos del proyecto
-COPY . /var/www/html
+# Copiar todos los archivos
+COPY . .
 
-# Instalar dependencias de PHP (sin dev)
-RUN composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist
+# Instalar dependencias Laravel
+RUN composer install --no-dev --optimize-autoloader
 
-# Instalar dependencias de JavaScript
-RUN npm install --legacy-peer-deps
-
-# Compilar assets con Vite
+# Instalar dependencias frontend (Inertia + Vue)
+RUN npm install
 RUN npm run build
 
-# Establecer permisos correctos
-RUN chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache
-RUN chmod -R 775 /var/www/html/storage /var/www/html/bootstrap/cache
+# Generar APP_KEY automáticamente
+RUN php artisan key:generate --force
 
-# Configurar Apache para que apunte a /public
-RUN sed -i 's|DocumentRoot /var/www/html|DocumentRoot /var/www/html/public|g' /etc/apache2/sites-available/000-default.conf
+# Limpiar cache
+RUN php artisan config:clear
+RUN php artisan route:clear
+RUN php artisan view:clear
 
-# Configurar AllowOverride para .htaccess
-RUN echo '<Directory /var/www/html/public>\n\
-    Options Indexes FollowSymLinks\n\
-    AllowOverride All\n\
-    Require all granted\n\
-</Directory>' >> /etc/apache2/sites-available/000-default.conf
+# Puerto que usa Render
+EXPOSE 10000
 
-# Limpiar cache de Laravel
-RUN php artisan optimize:clear || true
-
-# Exponer puerto 80
-EXPOSE 80
-
-# Comando de inicio (ejecuta migraciones y luego inicia Apache)
-CMD php artisan migrate --force && apache2-foreground
-```
-
-**Guarda el archivo.**
-
----
-
-### PASO 4: Crear archivo `.dockerignore`
-
-Crea `.dockerignore` en la raíz con este contenido:
-```
-.git
-.env
-.env.example
-node_modules
-vendor
-storage/logs/*
-storage/framework/cache/*
-storage/framework/sessions/*
-storage/framework/views/*
-bootstrap/cache/*
-.vscode
-.idea
-*.log
-.DS_Store
-Thumbs.db
+# Comando de inicio
+CMD php artisan serve --host=0.0.0.0 --port=10000
