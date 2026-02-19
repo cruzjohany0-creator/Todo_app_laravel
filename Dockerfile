@@ -1,7 +1,7 @@
-# Usar imagen oficial PHP
+# Imagen oficial PHP con FPM (mejor que cli para producción)
 FROM php:8.2-cli
 
-# Instalar dependencias del sistema
+# Instalar dependencias del sistema y Node.js correctamente
 RUN apt-get update && apt-get install -y \
     git \
     unzip \
@@ -11,37 +11,48 @@ RUN apt-get update && apt-get install -y \
     libpng-dev \
     libxml2-dev \
     libonig-dev \
-    nodejs \
-    npm
+    gnupg
 
-# Instalar extensiones necesarias de PHP
-RUN docker-php-ext-install pdo_mysql mbstring zip exif pcntl bcmath
+# Instalar Node.js 18 (estable)
+RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
+    && apt-get install -y nodejs
+
+# Instalar extensiones PHP necesarias para Laravel
+RUN docker-php-ext-install \
+    pdo_mysql \
+    mbstring \
+    zip \
+    exif \
+    pcntl \
+    bcmath
 
 # Instalar Composer
-COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
-# Crear carpeta de la aplicación
+# Crear directorio app
 WORKDIR /var/www/app
 
-# Copiar todos los archivos
+# Copiar archivos del proyecto
 COPY . .
 
-# Instalar dependencias Laravel
-RUN composer install --no-dev --optimize-autoloader
+# Instalar dependencias PHP
+RUN composer install --no-dev --optimize-autoloader --no-interaction
 
-# Instalar dependencias frontend (Inertia + Vue)
+# Instalar dependencias frontend
 RUN npm install
+
+# Compilar frontend (Inertia / Vue)
 RUN npm run build
 
-# Generar APP_KEY automáticamente
-RUN php artisan key:generate --force
+# Permisos necesarios
+RUN chmod -R 777 storage bootstrap/cache
 
 # Limpiar cache
 RUN php artisan config:clear
 RUN php artisan route:clear
 RUN php artisan view:clear
 
-# Puerto que usa Render
+# Puerto de Render
 EXPOSE 10000
 
 # Comando de inicio
